@@ -384,4 +384,277 @@ function editBranchLabel(oldName, textElement) {
             branches[newName] = branches[oldName];
             delete branches[oldName];
             connections.forEach(conn => {
-                if (conn.fromBranch === oldName) conn.from
+                if (conn.fromBranch === oldName) conn.fromBranch = newName;
+                if (conn.toBranch === oldName) conn.toBranch = newName;
+            });
+            drawDiagram();
+        }
+        document.body.removeChild(input);
+    });
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
+}
+function showSidebar(branchName, nodeIndex) {
+    currentSelectedNode = {branchName, nodeIndex};
+    const node = branches[branchName].nodes[nodeIndex];
+    document.getElementById('node-title').value = node.title || '';
+    document.getElementById('node-content').value = node.content || '';
+    document.getElementById('sidebar').style.display = 'flex';
+}
+function saveNodeDetails() {
+    if (!currentSelectedNode) return;
+    const {branchName, nodeIndex} = currentSelectedNode;
+    const node = branches[branchName].nodes[nodeIndex];
+    node.title = document.getElementById('node-title').value;
+    node.content = document.getElementById('node-content').value;
+    drawDiagram();
+    closeSidebar();
+}
+function deleteNode() {
+    if (!currentSelectedNode) return;
+    const {branchName, nodeIndex} = currentSelectedNode;
+    branches[branchName].nodes.splice(nodeIndex, 1);
+    connections = connections.filter(conn => !(conn.fromBranch === branchName && conn.fromNodeIndex === nodeIndex) && !(conn.toBranch === branchName && conn.toNodeIndex === nodeIndex));
+    connections.forEach(conn => {
+        if (conn.fromBranch === branchName && conn.fromNodeIndex > nodeIndex) conn.fromNodeIndex--;
+        if (conn.toBranch === branchName && conn.toNodeIndex > nodeIndex) conn.toNodeIndex--;
+    });
+    drawDiagram();
+    closeSidebar();
+}
+function deleteBranch() {
+    if (!currentSelectedNode) return;
+    const {branchName} = currentSelectedNode;
+    if (confirm('Delete this branch and all its nodes?')) {
+        delete branches[branchName];
+        connections = connections.filter(conn => conn.fromBranch !== branchName && conn.toBranch !== branchName);
+        drawDiagram();
+        closeSidebar();
+    }
+}
+function deleteConnection(connIndex) {
+    if (confirm('Delete this connection?')) {
+        connections.splice(connIndex, 1);
+        drawDiagram();
+    }
+}
+function closeSidebar() {
+    document.getElementById('sidebar').style.display = 'none';
+    currentSelectedNode = null;
+}
+function removeGhost() {
+    if (ghostCircle) {
+        svg.removeChild(ghostCircle);
+        ghostCircle = null;
+    }
+    if (ghostLine) {
+        svg.removeChild(ghostLine);
+        ghostLine = null;
+    }
+}
+function removeGhostBranch() {
+    if (ghostBranchLine) {
+        svg.removeChild(ghostBranchLine);
+        ghostBranchLine = null;
+    }
+}
+function downloadCSV() {
+    let csvContent = 'type,branch,y,color,x,title,content,fromBranch,fromNodeIndex,toBranch,toNodeIndex\n';
+    Object.keys(branches).forEach(branchName => {
+        const branch = branches[branchName];
+        csvContent += `branch,${branchName},${branch.y},${branch.color},,,, , , ,\n`;
+        branch.nodes.forEach(node => {
+            csvContent += `node,${branchName}, , ,${node.x},${node.title},${node.content}, , , ,\n`;
+        });
+    });
+    connections.forEach(conn => {
+        csvContent += `connection, , , , , , ,${conn.fromBranch},${conn.fromNodeIndex},${conn.toBranch},${conn.toNodeIndex}\n`;
+    });
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'git_workflow.csv');
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+function uploadCSV() {
+    const file = document.getElementById('upload').files[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const text = e.target.result;
+            const lines = text.split('\n').slice(1);
+            branches = {};
+            connections = [];
+            lines.forEach(line => {
+                if (line.trim()) {
+                    const [type, branch, y, color, x, title, content, fromBranch, fromNodeIndex, toBranch, toNodeIndex] = line.split(',');
+                    if (type === 'branch') {
+                        branches[branch] = { y: parseInt(y), color, nodes: [] };
+                    } else if (type === 'node') {
+                        if (branches[branch]) {
+                            branches[branch].nodes.push({ x: parseInt(x), title, content });
+                        }
+                    } else if (type === 'connection') {
+                        connections.push({ fromBranch, fromNodeIndex: parseInt(fromNodeIndex), toBranch, toNodeIndex: parseInt(toNodeIndex) });
+                    }
+                }
+            });
+            Object.keys(branches).forEach(b => {
+                branches[b].nodes.sort((a, b) => a.x - b.x);
+            });
+            if (Object.keys(branches).length === 0) {
+                branches.Main = { y: 100, color: '#add8e6', nodes: [] };
+            }
+            let newMaxX = 1100;
+            Object.values(branches).forEach(b => {
+                b.nodes.forEach(n => {
+                    if (n.x > newMaxX) newMaxX = n.x;
+                });
+            });
+            maxNodeX = newMaxX + gridSpacing;
+            drawDiagram();
+        };
+        reader.readAsText(file);
+    }
+}
+drawDiagram();
+svg.addEventListener('mousemove', (e) => {
+    const {x: rawX, y: rawY} = getSvgPoint(e);
+    if (isAdding) {
+        let closestBranch = null;
+        let minDist = Infinity;
+        currentTargetBranch = null;
+        Object.entries(branches).forEach(([bName, b]) => {
+            let dist = Math.abs(b.y - rawY);
+            if (dist < minDist) {
+                minDist = dist;
+                closestBranch = {name: bName, y: b.y, branch: b};
+            }
+        });
+        if (minDist > 20) {
+            removeGhost();
+            return;
+        }
+        currentTargetBranch = closestBranch.name;
+        let snappedX = snapToXGrid(rawX);
+        if (snappedX <= fromNode.x || snappedX < minNodeX || snappedX > maxNodeX) {
+            removeGhost();
+            return;
+        }
+        const occupied = closestBranch.branch.nodes.some(n => n.x === snappedX);
+        if (occupied) {
+            removeGhost();
+            return;
+        }
+        if (!ghostCircle) {
+            ghostCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            ghostCircle.setAttribute('r', nodeRadius);
+            ghostCircle.setAttribute('opacity', 0.5);
+            svg.appendChild(ghostCircle);
+        }
+        ghostCircle.setAttribute('cx', snappedX);
+        ghostCircle.setAttribute('cy', closestBranch.y);
+        ghostCircle.setAttribute('fill', closestBranch.branch.color);
+        if (!ghostLine) {
+            ghostLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            ghostLine.setAttribute('stroke', '#808080');
+            ghostLine.setAttribute('stroke-width', 2);
+            ghostLine.setAttribute('opacity', 0.5);
+            svg.appendChild(ghostLine);
+        }
+        ghostLine.setAttribute('x1', fromNode.x);
+        ghostLine.setAttribute('y1', fromNode.y);
+        ghostLine.setAttribute('x2', snappedX);
+        ghostLine.setAttribute('y2', closestBranch.y);
+    } else {
+        let snappedY = snapToYGrid(rawY);
+        if (Math.abs(rawY - snappedY) > hoverTolerance) {
+            removeGhostBranch();
+            return;
+        }
+        const isNearExisting = Object.values(branches).some(b => Math.abs(b.y - snappedY) < minBranchDistance);
+        if (isNearExisting || snappedY < minBranchY || rawX < startX + 50 || rawX > maxNodeX) {
+            removeGhostBranch();
+            return;
+        }
+        if (!ghostBranchLine) {
+            ghostBranchLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            ghostBranchLine.setAttribute('x1', startX + 50);
+            ghostBranchLine.setAttribute('x2', maxNodeX);
+            ghostBranchLine.setAttribute('stroke', '#808080');
+            ghostBranchLine.setAttribute('stroke-width', 1);
+            ghostBranchLine.setAttribute('stroke-dasharray', '5,5');
+            ghostBranchLine.setAttribute('opacity', 0.5);
+            svg.appendChild(ghostBranchLine);
+        }
+        ghostBranchLine.setAttribute('y1', snappedY);
+        ghostBranchLine.setAttribute('y2', snappedY);
+    }
+    if (isDragging) {
+        let snappedX = snapToXGrid(rawX);
+        snappedX = Math.max(dragNode.minDragX, Math.min(dragNode.maxDragX, snappedX));
+        if (snappedX === dragNode.node.x) return;
+        dragNode.node.x = snappedX;
+        const safeBranchName = dragNode.branchName.replace(/ /g, '_');
+        const circleId = `node-circle-${safeBranchName}-${dragNode.nodeIndex}`;
+        const textId = `node-text-${safeBranchName}-${dragNode.nodeIndex}`;
+        document.getElementById(circleId).setAttribute('cx', snappedX);
+        document.getElementById(textId).setAttribute('x', snappedX);
+        connections.forEach((conn, connIndex) => {
+            const lineId = `conn-${connIndex}`;
+            if (conn.fromBranch === dragNode.branchName && conn.fromNodeIndex === dragNode.nodeIndex) {
+                document.getElementById(lineId).setAttribute('x1', snappedX);
+            }
+            if (conn.toBranch === dragNode.branchName && conn.toNodeIndex === dragNode.nodeIndex) {
+                document.getElementById(lineId).setAttribute('x2', snappedX);
+            }
+        });
+    }
+});
+svg.addEventListener('mouseup', () => {
+    isDragging = false;
+    dragNode = null;
+});
+svg.addEventListener('mouseleave', () => {
+    removeGhostBranch();
+    if (isAdding) removeGhost();
+});
+svg.addEventListener('click', (e) => {
+    const {x: rawX, y: rawY} = getSvgPoint(e);
+    if (isAdding && ghostCircle) {
+        const title = 'New commit';
+        const content = '';
+        const branch = branches[currentTargetBranch];
+        const newX = parseFloat(ghostCircle.getAttribute('cx'));
+        if (newX > maxNodeX) {
+            maxNodeX = newX + gridSpacing;
+        }
+        branch.nodes.push({ x: newX, title, content });
+        branch.nodes.sort((a, b) => a.x - b.x);
+        const newNodeIndex = branch.nodes.findIndex(n => n.x === newX);
+        connections.push({
+            fromBranch: fromNode.branchName,
+            fromNodeIndex: fromNode.index,
+            toBranch: currentTargetBranch,
+            toNodeIndex: newNodeIndex
+        });
+        isAdding = false;
+        fromNode = null;
+        currentTargetBranch = null;
+        removeGhost();
+        drawDiagram();
+        e.stopPropagation();
+        return;
+    }
+    if (rawX < startX + 50 || rawX > maxNodeX) return;
+    let snappedY = snapToYGrid(rawY);
+    if (Math.abs(rawY - snappedY) > hoverTolerance) return;
+    const isNearExisting = Object.values(branches).some(b => Math.abs(b.y - snappedY) < minBranchDistance);
+    if (!isNearExisting && snappedY >= minBranchY) {
+        pendingY = snappedY;
+        openAddBranchModal();
+    }
+});
