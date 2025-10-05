@@ -1,32 +1,88 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Git Workflow Visualizer</title>
     <style>
+        html {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        *,
+        *::before,
+        *::after {
+            box-sizing: inherit;
+        }
+
         body {
-            font-family: 'Poppins', sans-serif;
-            background: linear-gradient(135deg, #ffffff, #f0f4f8, #e0e7ff);
+            font-family: Arial, sans-serif;
+            background: #f9f9f9;
             color: #333333;
             margin: 0;
-            padding: 20px;
+            padding: 0;
             display: flex;
+            flex-direction: column;
+            height: 100vh;
+            box-sizing: border-box;
         }
-        #main-content { flex: 1; }
-        #diagram { margin-bottom: 20px; overflow: auto; }
+
+        .row {
+            display: flex;
+            flex-direction: row;
+        }
+
+        main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        #diagram {
+            flex: 1;
+            overflow: auto;
+            margin: 20px;
+        }
+
         #git-svg {
+            width: 100%;
+            height: 100%;
+            min-width: 100%;
             background-color: rgba(255, 255, 255, 0.9);
             border: 1px solid rgba(0, 0, 0, 0.1);
             border-radius: 15px;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            display: block;
         }
-        .controls {
-            margin-bottom: 20px;
+
+        .navbar {
+            background: linear-gradient(135deg, #ffffff, #f0f4f8);
+            padding: 15px 30px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            border-bottom: 1px solid rgba(0, 0, 0, 0.1);
             display: flex;
-            justify-content: center;
-            gap: 15px;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0;
         }
+
+        .navbar h1 {
+            margin: 0;
+            font-size: 24px;
+            color: #22c55e;
+            text-shadow: 0 0 10px rgba(34, 197, 94, 0.3);
+        }
+
+        .navbar-controls {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
         button {
             padding: 12px 24px;
             background: linear-gradient(45deg, #4ade80, #22c55e);
@@ -37,10 +93,12 @@
             transition: transform 0.2s, box-shadow 0.2s;
             box-shadow: 0 4px 15px rgba(34, 197, 94, 0.3);
         }
+
         button:hover {
             transform: scale(1.05);
             box-shadow: 0 6px 20px rgba(34, 197, 94, 0.5);
         }
+
         .modal {
             display: none;
             position: fixed;
@@ -50,9 +108,10 @@
             width: 100%;
             height: 100%;
             overflow: auto;
-            background-color: rgba(0,0,0,0.4);
+            background-color: rgba(0, 0, 0, 0.4);
             backdrop-filter: blur(5px);
         }
+
         .modal-content {
             background: linear-gradient(135deg, #ffffff, #f0f4f8);
             margin: 15% auto;
@@ -64,18 +123,24 @@
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
             color: #333333;
         }
+
         .close {
             color: #888;
             float: right;
             font-size: 28px;
             font-weight: bold;
         }
-        .close:hover, .close:focus {
+
+        .close:hover,
+        .close:focus {
             color: #333;
             text-decoration: none;
             cursor: pointer;
         }
-        input[type="text"], textarea, select {
+
+        input[type="text"],
+        textarea,
+        select {
             padding: 10px;
             margin: 10px 0;
             width: 100%;
@@ -84,14 +149,42 @@
             border-radius: 8px;
             color: #333;
         }
-        input[type="text"]::placeholder { color: rgba(0, 0, 0, 0.5); }
-        input[type="file"] { color: #333; }
+
+        input[type="text"]::placeholder {
+            color: rgba(0, 0, 0, 0.5);
+        }
+
+        input[type="file"] {
+            padding: 12px 24px;
+            background: linear-gradient(45deg, #4ade80, #22c55e);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 15px rgba(34, 197, 94, 0.3);
+        }
+
+        input[type="file"]:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 20px rgba(34, 197, 94, 0.5);
+        }
+
+        input[type="file"]::file-selector-button {
+            display: none;
+        }
+
         h1 {
             text-align: center;
             color: #22c55e;
             text-shadow: 0 0 10px rgba(34, 197, 94, 0.3);
         }
-        p { text-align: center; color: #666; }
+
+        p {
+            text-align: center;
+            color: #666;
+        }
+
         #sidebar {
             width: 300px;
             background-color: #ffffff;
@@ -101,47 +194,58 @@
             flex-direction: column;
             box-shadow: -5px 0 15px rgba(0, 0, 0, 0.05);
         }
-        #sidebar h2 { margin-top: 0; }
-        #sidebar button { margin-top: 10px; }
-        #delete-node, #delete-branch {
+
+        #sidebar h2 {
+            margin-top: 0;
+        }
+
+        #sidebar button {
+            margin-top: 10px;
+        }
+
+        #delete-node,
+        #delete-branch {
             background: linear-gradient(45deg, #ef4444, #dc2626);
             box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3);
         }
-        #delete-node:hover, #delete-branch:hover {
+
+        #delete-node:hover,
+        #delete-branch:hover {
             box-shadow: 0 6px 20px rgba(239, 68, 68, 0.5);
         }
     </style>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
 </head>
+
 <body>
-    <div id="main-content">
-        <h1>Git Workflow Visualizer</h1>
-        <p>Based on the provided Git Workflow image. Start with Main branch, add custom branches and nodes via modals. Hover on branch lines to see ghost node at grid positions, click to add node there.</p>
-       
-        <div id="diagram">
-            <svg id="git-svg"></svg> <!-- Height and width dynamic -->
-        </div>
-       
-        <div class="controls">
-            <button onclick="openAddBranchModal()">Add Branch</button>
+    <div class="navbar">
+        <h1>Workbranch Diagram</h1>
+        <div class="navbar-controls">
             <button onclick="downloadCSV()">Download CSV</button>
+            <button onclick="exportPNG()">Export PNG</button>
             <input type="file" id="upload" accept=".csv" onchange="uploadCSV()">
         </div>
     </div>
-   
-    <!-- Sidebar -->
-    <div id="sidebar">
-        <h2>Node Details</h2>
-        <label for="node-title">Title:</label>
-        <input id="node-title" type="text">
-        <label for="node-content">Content:</label>
-        <textarea id="node-content" rows="5"></textarea>
-        <button onclick="saveNodeDetails()">Save</button>
-        <button id="delete-node" onclick="deleteNode()">Delete Node</button>
-        <button id="delete-branch" onclick="deleteBranch()">Delete Branch</button>
-        <button onclick="closeSidebar()">Close</button>
-    </div>
-   
+
+    <main class="row">
+        <div id="diagram">
+            <svg id="git-svg"></svg>
+        </div>
+        <!-- Sidebar -->
+        <div id="sidebar">
+            <h2>Node Details</h2>
+            <label for="node-title">Title:</label>
+            <input id="node-title" type="text">
+            <label for="node-content">Content:</label>
+            <textarea id="node-content" rows="5"></textarea>
+            <button onclick="saveNodeDetails()">Save</button>
+            <button id="delete-node" onclick="deleteNode()">Delete Node</button>
+            <button id="delete-branch" onclick="deleteBranch()">Delete Branch</button>
+            <button onclick="closeSidebar()">Close</button>
+        </div>
+    </main>
+
+
+
     <!-- Add Branch Modal -->
     <div id="addBranchModal" class="modal">
         <div class="modal-content">
@@ -152,7 +256,7 @@
             <button onclick="addBranch()">Create Branch</button>
         </div>
     </div>
-   
+
     <!-- Add Node Modal -->
     <div id="addNodeModal" class="modal">
         <div class="modal-content">
@@ -163,7 +267,7 @@
             <button onclick="addNodeFromModal()">Create Node</button>
         </div>
     </div>
-   
+
     <script>
         let branches = { Main: { y: 100, color: '#add8e6', nodes: [] } };
         let connections = [];
@@ -172,7 +276,7 @@
         const gridSpacing = 50;
         const ySpacing = 50;
         const minNodeX = startX + 100;
-        let maxNodeX = 1100;
+        let maxNodeX = 1400;
         const minBranchY = 100;
         const minBranchDistance = 20;
         const extensionAmount = 500;
@@ -273,9 +377,11 @@
             svg.innerHTML = '';
             const maxY = Object.keys(branches).length > 0 ? Math.max(...Object.values(branches).map(b => b.y)) : minBranchY;
             const svgHeight = maxY + 200;
-            const svgWidth = maxNodeX + 100;
+            const containerWidth = document.getElementById('diagram').clientWidth;
+            const svgWidth = Math.max(maxNodeX + 100, containerWidth);
             svg.setAttribute('width', svgWidth);
             svg.setAttribute('height', svgHeight);
+            svg.setAttribute('viewBox', `0 0 ${svgWidth} ${svgHeight}`);
             for (let x = minNodeX; x <= maxNodeX; x += gridSpacing) {
                 const gridLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
                 gridLine.setAttribute('x1', x);
@@ -320,12 +426,6 @@
             marker.appendChild(path);
             defs.appendChild(marker);
             svg.appendChild(defs);
-            const timeText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-            timeText.setAttribute('x', 50);
-            timeText.setAttribute('y', 40);
-            timeText.setAttribute('fill', '#333333');
-            timeText.textContent = 'TIME →';
-            svg.appendChild(timeText);
             const extensionHit = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
             extensionHit.setAttribute('x', maxNodeX - 50);
             extensionHit.setAttribute('y', 30);
@@ -408,7 +508,7 @@
                 hitArea.setAttribute('stroke', 'transparent');
                 hitArea.setAttribute('stroke-width', 20);
                 hitArea.addEventListener('mousemove', (e) => {
-                    let {x: rawX, y: rawY} = getSvgPoint(e);
+                    let { x: rawX, y: rawY } = getSvgPoint(e);
                     let snappedX = snapToXGrid(rawX);
                     let snappedY = snapToYGrid(rawY);
                     if (Math.abs(rawX - snappedX) > hoverTolerance || Math.abs(rawY - snappedY) > hoverTolerance || snappedX < minNodeX || snappedX > maxNodeX) {
@@ -432,7 +532,7 @@
                 });
                 hitArea.addEventListener('mouseleave', removeGhost);
                 hitArea.addEventListener('click', (e) => {
-                    let {x: rawX, y: rawY} = getSvgPoint(e);
+                    let { x: rawX, y: rawY } = getSvgPoint(e);
                     let snappedX = snapToXGrid(rawX);
                     let snappedY = snapToYGrid(rawY);
                     if (Math.abs(rawX - snappedX) > hoverTolerance || Math.abs(rawY - snappedY) > hoverTolerance) return;
@@ -476,7 +576,7 @@
                         plus.textContent = '+';
                         plus.addEventListener('click', (e) => {
                             isAdding = true;
-                            fromNode = {branchName, index, x: node.x, y: branch.y};
+                            fromNode = { branchName, index, x: node.x, y: branch.y };
                             const icons = group.querySelectorAll('.node-icon');
                             icons.forEach(icon => group.removeChild(icon));
                             e.stopPropagation();
@@ -560,7 +660,7 @@
             input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
         }
         function showSidebar(branchName, nodeIndex) {
-            currentSelectedNode = {branchName, nodeIndex};
+            currentSelectedNode = { branchName, nodeIndex };
             const node = branches[branchName].nodes[nodeIndex];
             document.getElementById('node-title').value = node.title || '';
             document.getElementById('node-content').value = node.content || '';
@@ -568,7 +668,7 @@
         }
         function saveNodeDetails() {
             if (!currentSelectedNode) return;
-            const {branchName, nodeIndex} = currentSelectedNode;
+            const { branchName, nodeIndex } = currentSelectedNode;
             const node = branches[branchName].nodes[nodeIndex];
             node.title = document.getElementById('node-title').value;
             node.content = document.getElementById('node-content').value;
@@ -577,7 +677,7 @@
         }
         function deleteNode() {
             if (!currentSelectedNode) return;
-            const {branchName, nodeIndex} = currentSelectedNode;
+            const { branchName, nodeIndex } = currentSelectedNode;
             branches[branchName].nodes.splice(nodeIndex, 1);
             connections = connections.filter(conn => !(conn.fromBranch === branchName && conn.fromNodeIndex === nodeIndex) && !(conn.toBranch === branchName && conn.toNodeIndex === nodeIndex));
             connections.forEach(conn => {
@@ -589,7 +689,7 @@
         }
         function deleteBranch() {
             if (!currentSelectedNode) return;
-            const {branchName} = currentSelectedNode;
+            const { branchName } = currentSelectedNode;
             if (confirm('Delete this branch and all its nodes?')) {
                 delete branches[branchName];
                 connections = connections.filter(conn => conn.fromBranch !== branchName && conn.toBranch !== branchName);
@@ -635,7 +735,7 @@
             connections.forEach(conn => {
                 csvContent += `connection, , , , , , ,${conn.fromBranch},${conn.fromNodeIndex},${conn.toBranch},${conn.toNodeIndex}\n`;
             });
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const blob = new Blob([csvContent], { type: 'text/csv;charset-utf-8;' });
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.setAttribute('href', url);
@@ -645,11 +745,60 @@
             link.click();
             document.body.removeChild(link);
         }
+        
+        function exportPNG() {
+            const svgElement = document.getElementById('git-svg');
+            const svgData = new XMLSerializer().serializeToString(svgElement);
+            
+            // 创建一个临时的canvas元素
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            
+            // 获取SVG的尺寸
+            const svgWidth = svgElement.getAttribute('width') || svgElement.clientWidth;
+            const svgHeight = svgElement.getAttribute('height') || svgElement.clientHeight;
+            
+            // 设置canvas尺寸，使用2倍分辨率以获得更清晰的图片
+            const scale = 2;
+            canvas.width = svgWidth * scale;
+            canvas.height = svgHeight * scale;
+            
+            // 设置白色背景
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 创建图片对象
+            const img = new Image();
+            
+            img.onload = function() {
+                // 在canvas上绘制SVG
+                ctx.scale(scale, scale);
+                ctx.drawImage(img, 0, 0, svgWidth, svgHeight);
+                
+                // 将canvas转换为PNG并下载
+                canvas.toBlob(function(blob) {
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.setAttribute('href', url);
+                    link.setAttribute('download', 'workbranch_diagram.png');
+                    link.style.visibility = 'hidden';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                }, 'image/png');
+            };
+            
+            // 将SVG转换为data URL
+            const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+            const url = URL.createObjectURL(svgBlob);
+            img.src = url;
+        }
         function uploadCSV() {
             const file = document.getElementById('upload').files[0];
             if (file) {
                 const reader = new FileReader();
-                reader.onload = function(e) {
+                reader.onload = function (e) {
                     const text = e.target.result;
                     const lines = text.split('\n').slice(1);
                     branches = {};
@@ -687,8 +836,14 @@
             }
         }
         drawDiagram();
+
+        // 监听窗口大小变化，重新绘制图表
+        window.addEventListener('resize', () => {
+            drawDiagram();
+        });
+
         svg.addEventListener('mousemove', (e) => {
-            const {x: rawX, y: rawY} = getSvgPoint(e);
+            const { x: rawX, y: rawY } = getSvgPoint(e);
             if (isAdding) {
                 let closestBranch = null;
                 let minDist = Infinity;
@@ -697,7 +852,7 @@
                     let dist = Math.abs(b.y - rawY);
                     if (dist < minDist) {
                         minDist = dist;
-                        closestBranch = {name: bName, y: b.y, branch: b};
+                        closestBranch = { name: bName, y: b.y, branch: b };
                     }
                 });
                 if (minDist > 20) {
@@ -789,7 +944,7 @@
             if (isAdding) removeGhost();
         });
         svg.addEventListener('click', (e) => {
-            const {x: rawX, y: rawY} = getSvgPoint(e);
+            const { x: rawX, y: rawY } = getSvgPoint(e);
             if (isAdding && ghostCircle) {
                 const title = 'New commit';
                 const content = '';
@@ -826,4 +981,5 @@
         });
     </script>
 </body>
+
 </html>
