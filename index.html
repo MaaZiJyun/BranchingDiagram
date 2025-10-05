@@ -269,17 +269,17 @@
     </div>
 
     <script>
-        let branches = { Main: { y: 100, color: '#add8e6', nodes: [] } };
+        let branches = { Main: { y: 100, color: 'green', nodes: [] } };
         let connections = [];
         const startX = 100;
         const nodeRadius = 10;
         const gridSpacing = 50;
         const ySpacing = 50;
         const minNodeX = startX + 100;
-        let maxNodeX = 1400;
+        let maxNodeX = 1200;
         const minBranchY = 100;
         const minBranchDistance = 20;
-        const extensionAmount = 500;
+        const extensionAmount = 50;
         const hoverTolerance = 5;
         const svg = document.getElementById('git-svg');
         let selectedBranchForNode = null;
@@ -366,7 +366,7 @@
             selectedXForNode = null;
         }
         function getRandomColor() {
-            const letters = '0123456789ABCDEF';
+            const letters = '23456789ABCD';
             let color = '#';
             for (let i = 0; i < 6; i++) {
                 color += letters[Math.floor(Math.random() * 16)];
@@ -382,6 +382,12 @@
             svg.setAttribute('width', svgWidth);
             svg.setAttribute('height', svgHeight);
             svg.setAttribute('viewBox', `0 0 ${svgWidth} ${svgHeight}`);
+            
+            // Create a background group for elements that should appear behind the grid
+            const backgroundGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            backgroundGroup.setAttribute('id', 'background-group');
+            svg.appendChild(backgroundGroup);
+            
             for (let x = minNodeX; x <= maxNodeX; x += gridSpacing) {
                 const gridLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
                 gridLine.setAttribute('x1', x);
@@ -487,7 +493,7 @@
                 const labelText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
                 labelText.setAttribute('x', startX);
                 labelText.setAttribute('y', branch.y + 5);
-                labelText.setAttribute('fill', 'black');
+                labelText.setAttribute('fill', 'white');
                 labelText.setAttribute('text-anchor', 'middle');
                 labelText.textContent = branchName;
                 labelText.addEventListener('dblclick', () => editBranchLabel(branchName, labelText));
@@ -525,7 +531,8 @@
                         ghostCircle.setAttribute('r', nodeRadius);
                         ghostCircle.setAttribute('fill', branch.color);
                         ghostCircle.setAttribute('opacity', 0.5);
-                        svg.appendChild(ghostCircle);
+                        const backgroundGroup = document.getElementById('background-group');
+                        backgroundGroup.appendChild(ghostCircle);
                     }
                     ghostCircle.setAttribute('cx', snappedX);
                     ghostCircle.setAttribute('cy', branch.y);
@@ -550,9 +557,9 @@
                     group.addEventListener('mouseenter', () => {
                         if (isAdding || isDragging) return;
                         const minus = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-                        minus.setAttribute('x', node.x - 20);
+                        minus.setAttribute('x', node.x - 3);
                         minus.setAttribute('y', branch.y + 5);
-                        minus.setAttribute('fill', 'red');
+                        minus.setAttribute('fill', 'white');
                         minus.setAttribute('font-size', '20');
                         minus.setAttribute('class', 'node-icon');
                         minus.textContent = '-';
@@ -568,7 +575,7 @@
                         });
                         group.appendChild(minus);
                         const plus = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-                        plus.setAttribute('x', node.x + 20);
+                        plus.setAttribute('x', node.x + 10);
                         plus.setAttribute('y', branch.y + 5);
                         plus.setAttribute('fill', 'green');
                         plus.setAttribute('font-size', '20');
@@ -625,9 +632,10 @@
                     nodeText.setAttribute('id', `node-text-${branchName.replace(/ /g, '_')}-${index}`);
                     nodeText.setAttribute('x', node.x);
                     nodeText.setAttribute('y', branch.y + 25);
-                    nodeText.setAttribute('fill', '#333333');
+                    nodeText.setAttribute('fill', '#000');
+                    nodeText.setAttribute('font-size', '12');
                     nodeText.setAttribute('text-anchor', 'middle');
-                    nodeText.textContent = (node.title || 'Untitled').substring(0, 10) + '...';
+                    nodeText.textContent = (node.title || 'Untitled').substring(0, 6) + '...';
                     group.appendChild(nodeText);
                     svg.appendChild(group);
                 });
@@ -709,17 +717,26 @@
         }
         function removeGhost() {
             if (ghostCircle) {
-                svg.removeChild(ghostCircle);
+                const backgroundGroup = document.getElementById('background-group');
+                if (backgroundGroup && backgroundGroup.contains(ghostCircle)) {
+                    backgroundGroup.removeChild(ghostCircle);
+                }
                 ghostCircle = null;
             }
             if (ghostLine) {
-                svg.removeChild(ghostLine);
+                const backgroundGroup = document.getElementById('background-group');
+                if (backgroundGroup && backgroundGroup.contains(ghostLine)) {
+                    backgroundGroup.removeChild(ghostLine);
+                }
                 ghostLine = null;
             }
         }
         function removeGhostBranch() {
             if (ghostBranchLine) {
-                svg.removeChild(ghostBranchLine);
+                const backgroundGroup = document.getElementById('background-group');
+                if (backgroundGroup && backgroundGroup.contains(ghostBranchLine)) {
+                    backgroundGroup.removeChild(ghostBranchLine);
+                }
                 ghostBranchLine = null;
             }
         }
@@ -745,38 +762,38 @@
             link.click();
             document.body.removeChild(link);
         }
-        
+
         function exportPNG() {
             const svgElement = document.getElementById('git-svg');
             const svgData = new XMLSerializer().serializeToString(svgElement);
-            
+
             // 创建一个临时的canvas元素
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
-            
+
             // 获取SVG的尺寸
             const svgWidth = svgElement.getAttribute('width') || svgElement.clientWidth;
             const svgHeight = svgElement.getAttribute('height') || svgElement.clientHeight;
-            
+
             // 设置canvas尺寸，使用2倍分辨率以获得更清晰的图片
             const scale = 2;
             canvas.width = svgWidth * scale;
             canvas.height = svgHeight * scale;
-            
+
             // 设置白色背景
             ctx.fillStyle = 'white';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-            
+
             // 创建图片对象
             const img = new Image();
-            
-            img.onload = function() {
+
+            img.onload = function () {
                 // 在canvas上绘制SVG
                 ctx.scale(scale, scale);
                 ctx.drawImage(img, 0, 0, svgWidth, svgHeight);
-                
+
                 // 将canvas转换为PNG并下载
-                canvas.toBlob(function(blob) {
+                canvas.toBlob(function (blob) {
                     const url = URL.createObjectURL(blob);
                     const link = document.createElement('a');
                     link.setAttribute('href', url);
@@ -788,7 +805,7 @@
                     URL.revokeObjectURL(url);
                 }, 'image/png');
             };
-            
+
             // 将SVG转换为data URL
             const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
             const url = URL.createObjectURL(svgBlob);
@@ -821,7 +838,7 @@
                         branches[b].nodes.sort((a, b) => a.x - b.x);
                     });
                     if (Object.keys(branches).length === 0) {
-                        branches.Main = { y: 100, color: '#add8e6', nodes: [] };
+                        branches.Main = { y: 100, color: 'green', nodes: [] };
                     }
                     let newMaxX = 1100;
                     Object.values(branches).forEach(b => {
@@ -874,7 +891,8 @@
                     ghostCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
                     ghostCircle.setAttribute('r', nodeRadius);
                     ghostCircle.setAttribute('opacity', 0.5);
-                    svg.appendChild(ghostCircle);
+                    const backgroundGroup = document.getElementById('background-group');
+                    backgroundGroup.appendChild(ghostCircle);
                 }
                 ghostCircle.setAttribute('cx', snappedX);
                 ghostCircle.setAttribute('cy', closestBranch.y);
@@ -882,9 +900,10 @@
                 if (!ghostLine) {
                     ghostLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
                     ghostLine.setAttribute('stroke', '#808080');
-                    ghostLine.setAttribute('stroke-width', 2);
+                    ghostLine.setAttribute('stroke-width', 1);
                     ghostLine.setAttribute('opacity', 0.5);
-                    svg.appendChild(ghostLine);
+                    const backgroundGroup = document.getElementById('background-group');
+                    backgroundGroup.appendChild(ghostLine);
                 }
                 ghostLine.setAttribute('x1', fromNode.x);
                 ghostLine.setAttribute('y1', fromNode.y);
@@ -909,7 +928,8 @@
                     ghostBranchLine.setAttribute('stroke-width', 1);
                     ghostBranchLine.setAttribute('stroke-dasharray', '5,5');
                     ghostBranchLine.setAttribute('opacity', 0.5);
-                    svg.appendChild(ghostBranchLine);
+                    const backgroundGroup = document.getElementById('background-group');
+                    backgroundGroup.appendChild(ghostBranchLine);
                 }
                 ghostBranchLine.setAttribute('y1', snappedY);
                 ghostBranchLine.setAttribute('y2', snappedY);
