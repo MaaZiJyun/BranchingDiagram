@@ -318,6 +318,8 @@
             document.getElementById(modalId).style.display = 'none';
         }
         function openAddBranchModal() {
+            // 自动填充随机生成的颜色
+            document.getElementById('new-branch-color').value = getRandomColor();
             openModal('addBranchModal');
             removeGhostBranch();
         }
@@ -366,10 +368,10 @@
             selectedXForNode = null;
         }
         function getRandomColor() {
-            const letters = '23456789ABCD';
+            const letters = '0123456789ABCDEF';
             let color = '#';
             for (let i = 0; i < 6; i++) {
-                color += letters[Math.floor(Math.random() * 16)];
+                color += letters[Math.floor(Math.random() * letters.length)];
             }
             return color;
         }
@@ -395,6 +397,7 @@
                 gridLine.setAttribute('x2', x);
                 gridLine.setAttribute('y2', svgHeight);
                 gridLine.setAttribute('stroke', '#d3d3d3');
+                gridLine.setAttribute('opacity', 0.3);
                 gridLine.setAttribute('stroke-width', 1);
                 svg.appendChild(gridLine);
             }
@@ -405,18 +408,10 @@
                 gridLine.setAttribute('x2', maxNodeX);
                 gridLine.setAttribute('y2', y);
                 gridLine.setAttribute('stroke', '#d3d3d3');
+                gridLine.setAttribute('opacity', 0.3);
                 gridLine.setAttribute('stroke-width', 1);
                 svg.appendChild(gridLine);
             }
-            const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-            arrow.setAttribute('x1', 50);
-            arrow.setAttribute('y1', 50);
-            arrow.setAttribute('x2', maxNodeX + 50);
-            arrow.setAttribute('y2', 50);
-            arrow.setAttribute('stroke', '#333333');
-            arrow.setAttribute('stroke-width', 2);
-            arrow.setAttribute('marker-end', 'url(#arrowhead)');
-            svg.appendChild(arrow);
             const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
             const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
             marker.setAttribute('id', 'arrowhead');
@@ -474,8 +469,8 @@
                     line.setAttribute('y1', fromBranch.y);
                     line.setAttribute('x2', toNode.x);
                     line.setAttribute('y2', toBranch.y);
-                    line.setAttribute('stroke', '#808080');
-                    line.setAttribute('stroke-width', 2);
+                    line.setAttribute('stroke', branches[conn.fromBranch].color);
+                    line.setAttribute('stroke-width', 5);
                     line.addEventListener('click', () => deleteConnection(connIndex));
                     svg.appendChild(line);
                 }
@@ -503,8 +498,9 @@
                 line.setAttribute('y1', branch.y);
                 line.setAttribute('x2', maxNodeX);
                 line.setAttribute('y2', branch.y);
-                line.setAttribute('stroke', '#808080');
-                line.setAttribute('stroke-width', 1);
+                line.setAttribute('stroke', branch.color);
+                line.setAttribute('stroke-width', 2);
+                line.setAttribute('opacity', 0.4);
                 line.setAttribute('stroke-dasharray', '5,5');
                 const hitArea = document.createElementNS('http://www.w3.org/2000/svg', 'line');
                 hitArea.setAttribute('x1', startX + 50);
@@ -521,11 +517,16 @@
                         removeGhost();
                         return;
                     }
+                    
+                    // 检查位置是否被占用
                     const occupied = branch.nodes.some(node => node.x === snappedX);
-                    if (occupied) {
+                    
+                    // 如果不在添加模式且位置被占用，则不显示ghost
+                    if (!isAdding && occupied) {
                         removeGhost();
                         return;
                     }
+                    
                     if (!ghostCircle) {
                         ghostCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
                         ghostCircle.setAttribute('r', nodeRadius);
@@ -534,6 +535,20 @@
                         const backgroundGroup = document.getElementById('background-group');
                         backgroundGroup.appendChild(ghostCircle);
                     }
+                    
+                    // 如果在添加模式且位置被占用，显示不同的样式
+                    if (isAdding && occupied) {
+                        ghostCircle.setAttribute('stroke', '#ff0000');
+                        ghostCircle.setAttribute('stroke-width', 2);
+                        ghostCircle.setAttribute('stroke-dasharray', '3,3');
+                        ghostCircle.setAttribute('opacity', 0.7);
+                    } else {
+                        ghostCircle.removeAttribute('stroke');
+                        ghostCircle.removeAttribute('stroke-width');
+                        ghostCircle.removeAttribute('stroke-dasharray');
+                        ghostCircle.setAttribute('opacity', 0.5);
+                    }
+                    
                     ghostCircle.setAttribute('cx', snappedX);
                     ghostCircle.setAttribute('cy', branch.y);
                 });
@@ -543,6 +558,72 @@
                     let snappedX = snapToXGrid(rawX);
                     let snappedY = snapToYGrid(rawY);
                     if (Math.abs(rawX - snappedX) > hoverTolerance || Math.abs(rawY - snappedY) > hoverTolerance) return;
+                    
+                    // If in adding mode, add node with single click
+                    if (isAdding && ghostCircle) {
+                        const title = 'New commit';
+                        const content = '';
+                        const targetBranch = branches[currentTargetBranch];
+                        const newX = parseFloat(ghostCircle.getAttribute('cx'));
+                        
+                        // 检查该位置是否已被占用
+                        const existingNodeIndex = targetBranch.nodes.findIndex(node => node.x === newX);
+                        
+                        if (existingNodeIndex !== -1) {
+                            // 如果位置被占用，删除旧节点及其相关连接
+                            connections = connections.filter(conn => 
+                                !(conn.fromBranch === currentTargetBranch && conn.fromNodeIndex === existingNodeIndex) && 
+                                !(conn.toBranch === currentTargetBranch && conn.toNodeIndex === existingNodeIndex)
+                            );
+                            
+                            // 更新其他连接的索引
+                            connections.forEach(conn => {
+                                if (conn.fromBranch === currentTargetBranch && conn.fromNodeIndex > existingNodeIndex) {
+                                    conn.fromNodeIndex--;
+                                }
+                                if (conn.toBranch === currentTargetBranch && conn.toNodeIndex > existingNodeIndex) {
+                                    conn.toNodeIndex--;
+                                }
+                            });
+                            
+                            // 移除旧节点
+                            targetBranch.nodes.splice(existingNodeIndex, 1);
+                        }
+                        
+                        if (newX > maxNodeX) {
+                            maxNodeX = newX + gridSpacing;
+                        }
+                        
+                        // 添加新节点
+                        targetBranch.nodes.push({ x: newX, title, content });
+                        targetBranch.nodes.sort((a, b) => a.x - b.x);
+                        const newNodeIndex = targetBranch.nodes.findIndex(n => n.x === newX);
+                        
+                        // 添加新连接
+                        connections.push({
+                            fromBranch: fromNode.branchName,
+                            fromNodeIndex: fromNode.index,
+                            toBranch: currentTargetBranch,
+                            toNodeIndex: newNodeIndex
+                        });
+                        
+                        isAdding = false;
+                        fromNode = null;
+                        currentTargetBranch = null;
+                        removeGhost();
+                        drawDiagram();
+                        e.stopPropagation();
+                        return;
+                    }
+                    
+                    e.stopPropagation();
+                });
+                hitArea.addEventListener('dblclick', (e) => {
+                    let { x: rawX, y: rawY } = getSvgPoint(e);
+                    let snappedX = snapToXGrid(rawX);
+                    let snappedY = snapToYGrid(rawY);
+                    if (Math.abs(rawX - snappedX) > hoverTolerance || Math.abs(rawY - snappedY) > hoverTolerance) return;
+                    
                     const occupied = branch.nodes.some(node => node.x === snappedX);
                     if (!occupied && snappedX >= minNodeX && snappedX <= maxNodeX) {
                         openAddNodeModal(branchName, snappedX);
@@ -554,15 +635,33 @@
                 branch.nodes.forEach((node, index) => {
                     const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
                     group.setAttribute('class', 'node-group');
-                    group.addEventListener('mouseenter', () => {
+                    // 创建一个包含按钮和文本的扩展区域
+                    const nodeArea = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                    nodeArea.setAttribute('x', node.x - 25);
+                    nodeArea.setAttribute('y', branch.y - 15);
+                    nodeArea.setAttribute('width', 50);
+                    nodeArea.setAttribute('height', 50); // 扩大高度以包含文本
+                    nodeArea.setAttribute('fill', 'transparent');
+                    nodeArea.setAttribute('class', 'node-area');
+                    group.appendChild(nodeArea);
+                    
+                    nodeArea.addEventListener('mouseenter', () => {
                         if (isAdding || isDragging) return;
+                        // 清除任何现有的图标和tooltip
+                        const existingIcons = group.querySelectorAll('.node-icon');
+                        existingIcons.forEach(icon => group.removeChild(icon));
+                        const existingTooltip = group.querySelector('.node-tooltip');
+                        if (existingTooltip) group.removeChild(existingTooltip);
+                        
                         const minus = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-                        minus.setAttribute('x', node.x - 3);
+                        minus.setAttribute('x', node.x - 20);
                         minus.setAttribute('y', branch.y + 5);
-                        minus.setAttribute('fill', 'white');
+                        minus.setAttribute('fill', 'red');
                         minus.setAttribute('font-size', '20');
                         minus.setAttribute('class', 'node-icon');
+                        minus.setAttribute('cursor', 'pointer');
                         minus.textContent = '-';
+                        
                         minus.addEventListener('click', (e) => {
                             branches[branchName].nodes.splice(index, 1);
                             connections = connections.filter(conn => !(conn.fromBranch === branchName && conn.fromNodeIndex === index) && !(conn.toBranch === branchName && conn.toNodeIndex === index));
@@ -574,25 +673,52 @@
                             e.stopPropagation();
                         });
                         group.appendChild(minus);
+                        
                         const plus = document.createElementNS('http://www.w3.org/2000/svg', 'text');
                         plus.setAttribute('x', node.x + 10);
                         plus.setAttribute('y', branch.y + 5);
                         plus.setAttribute('fill', 'green');
                         plus.setAttribute('font-size', '20');
                         plus.setAttribute('class', 'node-icon');
+                        plus.setAttribute('cursor', 'pointer');
                         plus.textContent = '+';
+                        
                         plus.addEventListener('click', (e) => {
                             isAdding = true;
                             fromNode = { branchName, index, x: node.x, y: branch.y };
                             const icons = group.querySelectorAll('.node-icon');
                             icons.forEach(icon => group.removeChild(icon));
+                            const tooltip = group.querySelector('.node-tooltip');
+                            if (tooltip) group.removeChild(tooltip);
                             e.stopPropagation();
                         });
                         group.appendChild(plus);
                     });
-                    group.addEventListener('mouseleave', () => {
+                    
+                    nodeArea.addEventListener('mouseleave', (e) => {
+                        // 检查鼠标是否还在节点组的任何元素上
+                        const relatedTarget = e.relatedTarget;
+                        if (relatedTarget && (
+                            relatedTarget.classList?.contains('node-icon') || 
+                            relatedTarget.classList?.contains('node-area') ||
+                            relatedTarget.parentElement === group ||
+                            group.contains(relatedTarget)
+                        )) {
+                            return; // 不移除按钮和tooltip
+                        }
+                        
+                        // 移除按钮和tooltip
                         const icons = group.querySelectorAll('.node-icon');
-                        icons.forEach(icon => group.removeChild(icon));
+                        icons.forEach(icon => {
+                            if (group.contains(icon)) {
+                                group.removeChild(icon);
+                            }
+                        });
+                        
+                        const tooltip = group.querySelector('.node-tooltip');
+                        if (tooltip && group.contains(tooltip)) {
+                            group.removeChild(tooltip);
+                        }
                     });
                     const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
                     circle.setAttribute('id', `node-circle-${branchName.replace(/ /g, '_')}-${index}`);
@@ -635,7 +761,15 @@
                     nodeText.setAttribute('fill', '#000');
                     nodeText.setAttribute('font-size', '12');
                     nodeText.setAttribute('text-anchor', 'middle');
+                    nodeText.setAttribute('cursor', 'pointer');
                     nodeText.textContent = (node.title || 'Untitled').substring(0, 6) + '...';
+                    
+                    // nodeText 也支持双击打开侧边栏
+                    nodeText.addEventListener('dblclick', (e) => {
+                        showSidebar(branchName, index);
+                        e.stopPropagation();
+                    });
+                    
                     group.appendChild(nodeText);
                     svg.appendChild(group);
                 });
@@ -883,10 +1017,6 @@
                     return;
                 }
                 const occupied = closestBranch.branch.nodes.some(n => n.x === snappedX);
-                if (occupied) {
-                    removeGhost();
-                    return;
-                }
                 if (!ghostCircle) {
                     ghostCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
                     ghostCircle.setAttribute('r', nodeRadius);
@@ -894,6 +1024,20 @@
                     const backgroundGroup = document.getElementById('background-group');
                     backgroundGroup.appendChild(ghostCircle);
                 }
+                
+                // 如果位置被占用，显示替换样式
+                if (occupied) {
+                    ghostCircle.setAttribute('stroke', '#ff0000');
+                    ghostCircle.setAttribute('stroke-width', 2);
+                    ghostCircle.setAttribute('stroke-dasharray', '3,3');
+                    ghostCircle.setAttribute('opacity', 0.7);
+                } else {
+                    ghostCircle.removeAttribute('stroke');
+                    ghostCircle.removeAttribute('stroke-width');
+                    ghostCircle.removeAttribute('stroke-dasharray');
+                    ghostCircle.setAttribute('opacity', 0.5);
+                }
+                
                 ghostCircle.setAttribute('cx', snappedX);
                 ghostCircle.setAttribute('cy', closestBranch.y);
                 ghostCircle.setAttribute('fill', closestBranch.branch.color);
@@ -965,31 +1109,8 @@
         });
         svg.addEventListener('click', (e) => {
             const { x: rawX, y: rawY } = getSvgPoint(e);
-            if (isAdding && ghostCircle) {
-                const title = 'New commit';
-                const content = '';
-                const branch = branches[currentTargetBranch];
-                const newX = parseFloat(ghostCircle.getAttribute('cx'));
-                if (newX > maxNodeX) {
-                    maxNodeX = newX + gridSpacing;
-                }
-                branch.nodes.push({ x: newX, title, content });
-                branch.nodes.sort((a, b) => a.x - b.x);
-                const newNodeIndex = branch.nodes.findIndex(n => n.x === newX);
-                connections.push({
-                    fromBranch: fromNode.branchName,
-                    fromNodeIndex: fromNode.index,
-                    toBranch: currentTargetBranch,
-                    toNodeIndex: newNodeIndex
-                });
-                isAdding = false;
-                fromNode = null;
-                currentTargetBranch = null;
-                removeGhost();
-                drawDiagram();
-                e.stopPropagation();
-                return;
-            }
+            
+            // Only handle branch creation on empty areas (not on branch lines)
             if (rawX < startX + 50 || rawX > maxNodeX) return;
             let snappedY = snapToYGrid(rawY);
             if (Math.abs(rawY - snappedY) > hoverTolerance) return;
